@@ -1,33 +1,21 @@
-// Port debugging version for Railway
+// Fixed for Railway port 3000 configuration
 const express = require('express');
 const app = express();
 
-console.log('=== PORT DEBUGGING ===');
-console.log('process.env.PORT:', process.env.PORT);
-console.log('Available env vars:');
-Object.keys(process.env).forEach(key => {
-  if (key.includes('PORT') || key.includes('HOST')) {
-    console.log(`${key}: ${process.env[key]}`);
-  }
-});
-console.log('======================');
+console.log('Starting application...');
 
 // Basic middleware
 app.use(express.text({ type: '*/*' }));
 
 // Root endpoint 
 app.get('/', (req, res) => {
-  console.log('=== REQUEST RECEIVED ===');
-  console.log('Request to root endpoint');
-  console.log('Request headers:', req.headers);
-  console.log('=======================');
-  
+  console.log('Root endpoint hit');
   res.json({ 
     status: 'ok',
-    message: 'Port debug version working',
-    serverPort: process.env.PORT || 'undefined',
-    listeningPort: PORT,
-    timestamp: new Date().toISOString()
+    message: 'Translation proxy working on correct port',
+    port: PORT,
+    timestamp: new Date().toISOString(),
+    hasClaudeKey: !!process.env.CLAUDE_API_KEY
   });
 });
 
@@ -36,33 +24,28 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Health check passed',
-    port: process.env.PORT || 'undefined'
+    port: PORT
   });
 });
 
-// Use Railway's PORT exactly as provided
-const PORT = process.env.PORT || 3001;
+// Simple translation test
+app.post('/translate', (req, res) => {
+  console.log('Translation request received:', req.body);
+  res.send(`TEST FINNISH: ${req.body}`);
+});
 
-console.log(`Railway provided PORT: ${process.env.PORT}`);
-console.log(`Using PORT: ${PORT}`);
-console.log(`Attempting to start server on port ${PORT}`);
+// Force port 3000 to match Railway configuration
+const PORT = 3000;
+
+console.log(`Starting server on port ${PORT} (Railway configured port)`);
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server started successfully`);
+  console.log(`✅ Server started on port ${PORT}`);
   console.log(`🌐 Listening on 0.0.0.0:${PORT}`);
-  console.log(`📍 Railway PORT env var: ${process.env.PORT}`);
 });
 
 server.on('error', (error) => {
   console.error('❌ Server error:', error);
-  console.error('Error code:', error.code);
-  console.error('Error address:', error.address);
-  console.error('Error port:', error.port);
-});
-
-server.on('listening', () => {
-  const addr = server.address();
-  console.log(`🎯 Server actually listening on ${addr.address}:${addr.port}`);
 });
 
 console.log('Script execution completed');
