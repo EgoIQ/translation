@@ -1,8 +1,8 @@
-// Full Claude translation proxy - Railway port 3000
+// Enhanced Claude translation proxy with better token handling
 const express = require('express');
 const app = express();
 
-console.log('Starting Claude Translation Proxy...');
+console.log('Starting Enhanced Claude Translation Proxy...');
 
 // Middleware
 app.use(express.text({ type: '*/*' }));
@@ -24,9 +24,10 @@ app.get('/', (req, res) => {
   console.log('Root endpoint hit');
   res.json({ 
     status: 'ok',
-    service: 'ego-translation-proxy',
-    message: 'Claude Translation Proxy is running',
+    service: 'ego-translation-proxy-enhanced',
+    message: 'Enhanced Claude Translation Proxy is running',
     port: PORT,
+    maxTokens: 8000,
     timestamp: new Date().toISOString(),
     hasClaudeKey: !!process.env.CLAUDE_API_KEY
   });
@@ -38,11 +39,17 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Health check passed',
-    hasClaudeKey: !!process.env.CLAUDE_API_KEY
+    hasClaudeKey: !!process.env.CLAUDE_API_KEY,
+    maxTokens: 8000
   });
 });
 
-// Full Claude translation endpoint
+// Rough token estimation (1 token ≈ 4 characters for most text)
+function estimateTokens(text) {
+  return Math.ceil(text.length / 4);
+}
+
+// Enhanced Claude translation endpoint
 app.post('/translate', async (req, res) => {
   console.log('Translation request received');
   
@@ -58,10 +65,22 @@ app.post('/translate', async (req, res) => {
     // Check API key
     if (!process.env.CLAUDE_API_KEY) {
       console.error('No Claude API key found');
-      return res.status(200).send(textToTranslate); // Fallback: return original
+      return res.status(200).send(textToTranslate);
     }
 
-    console.log(`Translating: "${textToTranslate.substring(0, 50)}..."`);
+    // Estimate token usage
+    const inputTokens = estimateTokens(textToTranslate);
+    const promptTokens = estimateTokens('Translate the following English text...'); // Rough estimate
+    const totalInputTokens = inputTokens + promptTokens;
+    
+    console.log(`Text length: ${textToTranslate.length} chars`);
+    console.log(`Estimated input tokens: ~${totalInputTokens}`);
+    console.log(`Translating: "${textToTranslate.substring(0, 100)}..."`);
+
+    // Warn if text is very long
+    if (totalInputTokens > 6000) {
+      console.warn(`⚠️  Large text detected (${totalInputTokens} tokens). Translation may be truncated.`);
+    }
 
     // Import axios for Claude API call
     const axios = require('axios');
@@ -76,16 +95,17 @@ CRITICAL RULES:
 - Write as if you were a Finnish native speaker
 - For business content: Use professional tone suitable for Finnish B2B market
 - Maintain SEO-friendly language for Finnish searches
+- IMPORTANT: Translate the COMPLETE text, do not truncate or summarize
 
 English text:
 ${textToTranslate}
 
 Finnish translation:`;
     
-    // Call Claude API
+    // Call Claude API with increased token limit
     const claudeResponse = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 8000, // Increased from 2000 to handle long articles
       messages: [
         {
           role: 'user',
@@ -98,13 +118,27 @@ Finnish translation:`;
         'X-API-Key': process.env.CLAUDE_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      timeout: 30000 // 30 second timeout
+      timeout: 60000 // Increased timeout for long content
     });
 
     // Extract translation
     const translatedText = claudeResponse.data.content[0].text.trim();
+    const outputTokens = estimateTokens(translatedText);
     
-    console.log(`Translation successful: "${translatedText.substring(0, 50)}..."`);
+    console.log(`Translation successful: "${translatedText.substring(0, 100)}..."`);
+    console.log(`Output length: ${translatedText.length} chars (~${outputTokens} tokens)`);
+    
+    // Check if translation might be truncated
+    if (outputTokens >= 7500) {
+      console.warn('⚠️  Output near token limit - translation may be truncated');
+    }
+    
+    // Basic completeness check
+    const inputLines = textToTranslate.split('\n').length;
+    const outputLines = translatedText.split('\n').length;
+    if (Math.abs(inputLines - outputLines) > 5) {
+      console.warn(`⚠️  Line count mismatch: Input ${inputLines} lines, Output ${outputLines} lines`);
+    }
     
     res.send(translatedText);
     
@@ -133,12 +167,13 @@ app.use((error, req, res, next) => {
 // Use port 3000 to match Railway configuration
 const PORT = 3000;
 
-console.log(`Starting server on port ${PORT} (Railway configured port)`);
+console.log(`Starting server on port ${PORT} with 8000 max tokens`);
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Claude Translation Proxy started on port ${PORT}`);
+  console.log(`✅ Enhanced Claude Translation Proxy started on port ${PORT}`);
   console.log(`🌐 Listening on 0.0.0.0:${PORT}`);
   console.log(`🔑 Claude API Key: ${process.env.CLAUDE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
+  console.log(`📊 Max tokens: 8000 (4x increase for long content)`);
 });
 
 server.on('error', (error) => {
